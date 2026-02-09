@@ -1,3 +1,5 @@
+package domain;
+
 public final class Transaction {
 
     private final String transactionId;
@@ -33,5 +35,27 @@ public final class Transaction {
         this.type = type;
         this.timestamp = timestamp;
         this.accountNumber = accountNumber;
+    }
+
+    //getters
+    //used in passing generic argument in transactions list in account.java
+    public TransactionType getType() {
+        return type;
+    }
+
+    public double getAmount() {
+        return amount;
+    }
+
+    public String getAccountNumber() {
+        return accountNumber;
+    }
+
+    public String getTransactionId() {
+        return transactionId;
+    }
+
+    public long getTimestamp() {
+        return timestamp;
     }
 }
