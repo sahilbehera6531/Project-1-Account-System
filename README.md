@@ -1,5 +1,4 @@
 # Project 1 — Ledger Account System
-
 ---
 
 ## 📌 Overview
