@@ -106,4 +106,4 @@ To clearly separate business errors from system errors.
 - Database integration (JPA / Hibernate)
 - Ledger reporting APIs
 - Authentication and security layer
-is this correct i just have to add these right?
+
