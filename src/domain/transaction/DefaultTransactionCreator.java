@@ -3,12 +3,15 @@ package domain.transaction;
 import domain.Transaction;
 import domain.TransactionType;
 import exception.BusinessException;
+import java.math.BigDecimal;
 import util.TransactionIdGenerator;
 
 public class DefaultTransactionCreator implements TransactionCreator {
 
     @Override
-    public Transaction create(double amount, TransactionType type, String accountNumber) {
+    public Transaction create(BigDecimal amount,
+                              TransactionType type,
+                              String accountNumber) {
         try {
             return new Transaction(
                     TransactionIdGenerator.generate(),

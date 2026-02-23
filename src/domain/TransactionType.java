@@ -2,5 +2,9 @@ package domain;
 
 public enum TransactionType{
     DEBIT,
-    CREDIT
+    CREDIT,
+
+    TRANSFER_IN,
+    TRANSFER_OUT,
+    REVERSAL
 }

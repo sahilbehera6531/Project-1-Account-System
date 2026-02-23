@@ -2,22 +2,26 @@ package domain;
 
 import domain.transaction.DefaultTransactionCreator;
 import domain.transaction.TransactionCreator;
+import domain.transaction.processor.*;
 import domain.validation.AccountValidator;
+
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
-import util.TransactionIdGenerator;
+import java.util.Map;
 
 public class Account {
 
-    
     private final String accountNumber;
     private String holderName;
-    private double balance;
+    private BigDecimal balance;
     private final List<Transaction> transactions = new ArrayList<>();
     private final TransactionCreator transactionCreator = new DefaultTransactionCreator();
+    private final Map<TransactionType, TransactionProcessor> processors =
+            new EnumMap<>(TransactionType.class);
 
-
-    public Account(String accNo, String name, double bal) {
+    public Account(String accNo, String name, BigDecimal bal) {
 
         if (accNo == null || accNo.isEmpty())
             throw new IllegalArgumentException("Invalid Account Number");
@@ -25,16 +29,16 @@ public class Account {
         if (name == null || name.isEmpty())
             throw new IllegalArgumentException("Invalid Name");
 
-        if (bal < 0)
+        if (bal == null || bal.compareTo(BigDecimal.ZERO) < 0)
             throw new IllegalArgumentException("Negative Balance Not Allowed");
 
         this.accountNumber = accNo;
         this.holderName = name;
         this.balance = bal;
 
-        if (bal > 0) {
+        if (bal.compareTo(BigDecimal.ZERO) > 0) {
             Transaction openingTxn = new Transaction(
-                    TransactionIdGenerator.generate(),
+                    util.TransactionIdGenerator.generate(),
                     bal,
                     TransactionType.CREDIT,
                     System.currentTimeMillis(),
@@ -42,33 +46,60 @@ public class Account {
             );
             transactions.add(openingTxn);
         }
+
+        processors.put(TransactionType.CREDIT, new CreditTransactionProcessor());
+        processors.put(TransactionType.DEBIT, new DebitTransactionProcessor());
     }
 
-    public void deposit(double amount) {
+    public void deposit(BigDecimal amount) {
 
         AccountValidator.validateDeposit(amount);
 
-        balance += amount;
+        increaseBalance(amount);
 
-        Transaction tx = createTransaction(amount, TransactionType.CREDIT);
+        Transaction tx = createTransactionRecord(amount, TransactionType.CREDIT);
 
         transactions.add(tx);
         verifyInvariant();
     }
 
-    public void withdraw(double amount) {
+    public void withdraw(BigDecimal amount) {
 
         AccountValidator.validateWithdraw(amount, balance);
 
-        balance -= amount;
+        decreaseBalance(amount);
 
-        Transaction tx = createTransaction(amount, TransactionType.DEBIT);
+        Transaction tx = createTransactionRecord(amount, TransactionType.DEBIT);
 
         transactions.add(tx);
         verifyInvariant();
     }
 
-    public double getBalance() {
+    public void applyTransaction(TransactionType type, BigDecimal amount) {
+
+        AccountValidator.validateAmount(amount);
+
+        Transaction tx = createTransactionRecord(amount, type);
+        TransactionProcessor processor = processors.get(type);
+
+        if (processor == null) {
+            throw new IllegalStateException("No processor found for " + type);
+        }
+
+        processor.process(this, tx);
+        transactions.add(tx);
+        verifyInvariant();
+    }
+
+    public void increaseBalance(BigDecimal amount) {
+        this.balance = this.balance.add(amount);
+    }
+
+    public void decreaseBalance(BigDecimal amount) {
+        this.balance = this.balance.subtract(amount);
+    }
+
+    public BigDecimal getBalance() {
         return balance;
     }
 
@@ -76,15 +107,15 @@ public class Account {
         return List.copyOf(transactions);
     }
 
-    public double calculateBalanceFromTransactions() {
+    public BigDecimal calculateBalanceFromTransactions() {
 
-        double bal = 0;
+        BigDecimal bal = BigDecimal.ZERO;
 
         for (Transaction t : transactions) {
             if (t.getType() == TransactionType.CREDIT) {
-                bal += t.getAmount();
+                bal = bal.add(t.getAmount());
             } else {
-                bal -= t.getAmount();
+                bal = bal.subtract(t.getAmount());
             }
         }
 
@@ -93,25 +124,23 @@ public class Account {
 
     private void verifyInvariant() {
 
-        double txBalance = calculateBalanceFromTransactions();
+        BigDecimal txBalance = calculateBalanceFromTransactions();
 
-        if (Double.compare(txBalance, balance) != 0) {
+        if (txBalance.compareTo(balance) != 0) {
             throw new IllegalStateException(
                     "Invariant broken: balance mismatch with transaction history"
             );
         }
     }
 
-    private Transaction createTransaction(double amount, TransactionType type) {
+    private Transaction createTransactionRecord(BigDecimal amount, TransactionType type) {
         return transactionCreator.create(amount, type, accountNumber);
     }
 
-    
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-
         Account account = (Account) o;
         return accountNumber.equals(account.accountNumber);
     }

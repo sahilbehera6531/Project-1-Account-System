@@ -1,15 +1,17 @@
 package domain;
 
+import java.math.BigDecimal;
+
 public final class Transaction {
 
     private final String transactionId;
-    private final double amount;
+    private final BigDecimal amount;
     private final TransactionType type;
     private final long timestamp;
     private final String accountNumber;
 
     public Transaction(String transactionId,
-                       double amount,
+                       BigDecimal amount,
                        TransactionType type,
                        long timestamp,
                        String accountNumber) {
@@ -18,7 +20,7 @@ public final class Transaction {
             throw new IllegalArgumentException("Invalid transactionId");
         }
 
-        if (amount <= 0) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Amount must be positive");
         }
 
@@ -37,13 +39,11 @@ public final class Transaction {
         this.accountNumber = accountNumber;
     }
 
-    //getters
-    //used in passing generic argument in transactions list in account.java
     public TransactionType getType() {
         return type;
     }
 
-    public double getAmount() {
+    public BigDecimal getAmount() {
         return amount;
     }
 
