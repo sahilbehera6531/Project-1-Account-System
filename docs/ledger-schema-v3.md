@@ -4,8 +4,13 @@
 Fintech-Grade Final Design
 
 ## Objective
-Enforce double-entry accounting, idempotent request handling,
-optimistic locking for concurrency control, and zero-sum integrity.
+Enforce double-entry accounting principles with:
+- Service-layer sign computation
+- Idempotent request guarantees
+- Optimistic locking for concurrency control
+- Zero-sum transaction integrity
+- Balance sheet reporting support
+- Production-ready relational integrity
 
 ---
 
@@ -23,17 +28,18 @@ Represents a financial account stored in base currency.
 | version | BIGINT | NOT NULL |
 | created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
 
-### Design Notes
+### Design Rules
 - `version` enables optimistic locking.
-- Balance updated atomically within DB transaction.
+- Balance updated atomically within database transaction.
 - No physical deletion allowed.
+- Account types drive balance sheet grouping.
 
 ---
 
 ## Table: ledger_transaction
 
 Each logical business transaction inserts **two rows**
-(one DEBIT and one CREDIT) to enforce double-entry principles.
+(one debit entry and one credit entry).
 
 | Column | Type | Constraints |
 |--------|------|------------|
@@ -43,7 +49,7 @@ Each logical business transaction inserts **two rows**
 | source_amount | DECIMAL(15,2) | NOT NULL |
 | currency_code | VARCHAR(10) | NOT NULL |
 | exchange_rate_at_runtime | DECIMAL(18,6) | NOT NULL |
-| base_amount | DECIMAL(15,2) | NOT NULL |
+| signed_amount | DECIMAL(15,2) | NOT NULL |
 | transaction_type | VARCHAR(10) | NOT NULL (DEBIT / CREDIT) |
 | document_uri | VARCHAR(255) | NULL |
 | created_by | VARCHAR(100) | NOT NULL |
@@ -54,9 +60,20 @@ Each logical business transaction inserts **two rows**
 ## Constraints
 
 - FK ON DELETE RESTRICT
-- CHECK (source_amount > 0)
-- CHECK (base_amount > 0)
+- CHECK (signed_amount != 0)
 - UNIQUE (request_id, account_id, transaction_type)
+
+---
+
+## Double-Entry Enforcement (Service Layer Rule)
+
+For every logical transaction:
+
+1. Compute signed amounts based on account type and transaction type.
+2. Insert exactly two rows (one positive, one negative).
+3. Ensure sum(signed_amount) per request_id = 0.
+4. Update account balances atomically.
+5. Execute within a single database transaction.
 
 ---
 
@@ -64,25 +81,12 @@ Each logical business transaction inserts **two rows**
 
 - INDEX(account_id)
 - INDEX(transaction_date)
-- INDEX(account_id, transaction_date)
 - INDEX(account_type)
-
----
-
-## Double-Entry Enforcement Rule
-
-For every logical transaction:
-
-1. Insert one DEBIT row.
-2. Insert one CREDIT row.
-3. Ensure total debit equals total credit.
-4. Update account balances atomically.
-5. Execute within a single DB transaction.
+- UNIQUE(request_id, account_id, transaction_type)
 
 ---
 
 ## Version Evolution
-This version enforces true double-entry modeling,
-composite idempotency protection, optimistic locking,
-and concurrency-safe zero-sum ledger updates suitable
-for production-grade financial systems.
+This version finalizes the transition to service-layer accounting logic,
+simplifies SQL aggregation via signed_amount, and enforces concurrency-safe,
+idempotent, zero-sum financial transactions suitable for production systems.
