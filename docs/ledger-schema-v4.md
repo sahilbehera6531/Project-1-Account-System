@@ -1,20 +1,42 @@
 # Ledger Database Schema – Version 4
 
 ## Status
-Fintech-Grade General Ledger (5 Account Types)
+Fintech-Grade General Ledger (5 Account Types)  
+With Accounting Period & Reversal Support
 
 ## Objective
-Extend the existing V3 design to support:
+Support:
 
-- Full General Ledger (Asset, Liability, Equity, Revenue, Expense)
-- Balance Sheet generation
-- Income Statement generation
-- Hierarchical Chart of Accounts
-- Zero-sum enforcement
+- Asset, Liability, Equity, Revenue, Expense
+- Double-entry accounting
+- Balance Sheet
+- Income Statement
+- Trial Balance
+- Accounting Period closing
+- Reversal entries
 - Idempotent request guarantees
 - Optimistic locking
 - Multi-currency correctness
-- Production-ready relational integrity
+
+---
+
+## Table: accounting_period
+
+Represents a financial reporting period.
+
+| Column | Type | Constraints |
+|--------|------|------------|
+| id | BIGINT | PRIMARY KEY |
+| period_code | VARCHAR(7) | NOT NULL, UNIQUE (e.g., 2026-03) |
+| start_date | DATE | NOT NULL |
+| end_date | DATE | NOT NULL |
+| is_closed | BOOLEAN | NOT NULL DEFAULT FALSE |
+
+### Design Rules
+
+- No journal entries allowed if `is_closed = TRUE`.
+- Period must be created before posting transactions.
+- Period closing is irreversible in this system.
 
 ---
 
@@ -37,10 +59,8 @@ Represents a financial account stored in base currency.
 
 - `version` enables optimistic locking.
 - `parent_account_id` enables hierarchical chart of accounts.
-- Balance stored in base currency.
-- Balance updated atomically within database transaction.
 - No physical deletion allowed.
-- Account types drive both Balance Sheet and Income Statement grouping.
+- Balance updated atomically within transaction.
 
 ---
 
@@ -54,11 +74,14 @@ Each logical business transaction inserts **two rows**
 | id | BIGINT | PRIMARY KEY |
 | account_id | BIGINT | NOT NULL, FK → account(id) |
 | request_id | VARCHAR(100) | NOT NULL |
+| reversal_of_request_id | VARCHAR(100) | NULL |
 | source_amount | DECIMAL(18,2) | NOT NULL |
 | currency_code | VARCHAR(10) | NOT NULL |
 | exchange_rate_at_runtime | DECIMAL(18,6) | NOT NULL |
 | signed_amount | DECIMAL(18,2) | NOT NULL |
 | transaction_type | VARCHAR(10) | NOT NULL (DEBIT / CREDIT) |
+| posting_date | DATE | NOT NULL |
+| accounting_period_code | VARCHAR(7) | NOT NULL, FK → accounting_period(period_code) |
 | document_uri | VARCHAR(255) | NULL |
 | created_by | VARCHAR(100) | NOT NULL |
 | transaction_date | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP |
@@ -69,6 +92,7 @@ Each logical business transaction inserts **two rows**
 
 - FOREIGN KEY (account_id) REFERENCES account(id) ON DELETE RESTRICT
 - FOREIGN KEY (parent_account_id) REFERENCES account(id) ON DELETE RESTRICT
+- FOREIGN KEY (accounting_period_code) REFERENCES accounting_period(period_code)
 - CHECK (signed_amount != 0)
 - UNIQUE (request_id, account_id, transaction_type)
 
@@ -92,23 +116,30 @@ Sign is computed in service layer before persistence.
 
 For every logical transaction:
 
-1. Compute `signed_amount` based on:
-   - account_type
-   - transaction_type (DEBIT / CREDIT)
+1. Validate accounting period is not closed.
+2. Compute signed_amount based on account_type and transaction_type.
+3. Insert exactly two rows (one positive, one negative).
+4. Ensure SUM(signed_amount) per request_id = 0.
+5. Update account balances atomically.
+6. Execute within a single database transaction.
 
-2. Insert exactly two rows (one positive, one negative).
+---
 
-3. Ensure:
+## Reversal Entry Rule
 
-   SUM(signed_amount) GROUP BY request_id = 0
-
-4. Update account balances atomically.
-
-5. Execute within a single database transaction.
+- Transactions cannot be deleted.
+- Incorrect entries must be reversed.
+- Reversal entry must reference `reversal_of_request_id`.
+- Reversal must mirror original signed_amount values.
 
 ---
 
 ## Financial Statement Support
+
+### Trial Balance
+
+List all accounts and balances.
+Ensure total debits = total credits.
 
 ### Balance Sheet
 
@@ -118,12 +149,6 @@ Includes:
 - LIABILITY
 - EQUITY
 
-Aggregation example:
-
-SUM(balance) GROUP BY account_type
-
----
-
 ### Income Statement
 
 Includes:
@@ -131,20 +156,17 @@ Includes:
 - REVENUE
 - EXPENSE
 
-Calculation:
-
 Net Income = SUM(REVENUE) - SUM(EXPENSE)
-
-Net income may optionally be transferred to retained earnings (EQUITY).
 
 ---
 
 ## Index Recommendations
 
 - INDEX(account_id)
-- INDEX(transaction_date)
 - INDEX(account_type)
 - INDEX(parent_account_id)
+- INDEX(accounting_period_code)
+- INDEX(posting_date)
 - UNIQUE(request_id, account_id, transaction_type)
 
 ---
@@ -152,6 +174,6 @@ Net income may optionally be transferred to retained earnings (EQUITY).
 ## Version Evolution
 
 V1 → Basic relational structure  
-V2 → Multi-currency + audit + service-layer sign  
-V3 → Double-entry + optimistic locking + idempotency  
-V4 → Full 5-type General Ledger with Balance Sheet & Income Statement support  
+V2 → Multi-currency + audit  
+V3 → Double-entry + idempotency + optimistic locking  
+V4 → 5-type General Ledger + Financial Statements + Period Control + Reversal Support  
